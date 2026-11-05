@@ -48,12 +48,14 @@ function decode(value: string) {
   return value.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 }
 function meta(html: string, key: string) {
-  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const patterns = [
-    new RegExp('<meta[^>]+(?:property|name)=["\\']' + escaped + '["\\'][^>]+content=["\\']([^"\\']*)["\\'][^>]*>', "i"),
-    new RegExp('<meta[^>]+content=["\\']([^"\\']*)["\\'][^>]+(?:property|name)=["\\']' + escaped + '["\\'][^>]*>', "i"),
-  ];
-  for (const pattern of patterns) { const match = html.match(pattern); if (match?.[1]) return decode(match[1].trim()); }
+  const tags = html.match(/<meta\\b[^>]*>/gi) ?? [];
+  for (const tag of tags) {
+    const attrs: Record<string, string> = {};
+    const attrPattern = /([a-zA-Z:-]+)\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))/g;
+    let match: RegExpExecArray | null;
+    while ((match = attrPattern.exec(tag))) attrs[match[1].toLowerCase()] = match[2] ?? match[3] ?? match[4] ?? "";
+    if ((attrs.property ?? attrs.name ?? "").toLowerCase() === key.toLowerCase() && attrs.content) return decode(attrs.content.trim());
+  }
   return null;
 }
 function textValue(value: unknown): string | null {
