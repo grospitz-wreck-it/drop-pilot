@@ -25,7 +25,7 @@ export async function PUT(request: NextRequest) {
     }
     const profiles = body.profiles;
     for (const profile of profiles) {
-      if (!profile || typeof profile.id !== "string" || typeof profile.name !== "string" ||
+      if (!profile || typeof profile.id !== "string" || typeof profile.name !== "string" || typeof profile.url !== "string" || !profile.url.trim() ||
           !["ticket", "drop"].includes(profile.kind) || !Array.isArray(profile.keywords) ||
           !Number.isFinite(profile.quantity) || !["active", "paused"].includes(profile.status)) {
         return NextResponse.json({ error: "Ein Suchprofil enthält ungültige Daten." }, { status: 400 });
