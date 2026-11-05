@@ -34,12 +34,19 @@ export async function PUT(request: NextRequest) {
 
     await ensureSchema();
     const db = getDb();
-    await db.execute("DELETE FROM profiles");
-    for (const profile of profiles) {
-      await db.execute({
-        sql: "INSERT INTO profiles (id, data, updated_at) VALUES (?, ?, ?)",
-        args: [profile.id, JSON.stringify(profile), new Date().toISOString()],
-      });
+    const transaction = await db.transaction("write");
+    try {
+      await transaction.execute("DELETE FROM profiles");
+      for (const profile of profiles) {
+        await transaction.execute({
+          sql: "INSERT INTO profiles (id, data, updated_at) VALUES (?, ?, ?)",
+          args: [profile.id, JSON.stringify(profile), new Date().toISOString()],
+        });
+      }
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
     }
     return NextResponse.json({ ok: true, count: profiles.length });
   } catch (error) {
