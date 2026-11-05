@@ -47,8 +47,7 @@ export default function Home() {
         }
         setReady(true);
       } catch (error) {
-        console.error(error);
-        if (!cancelled) setReady(true);
+        console.error("DropPilot konnte die Datenbank nicht laden:", error);
       }
     }
     loadProfiles();
