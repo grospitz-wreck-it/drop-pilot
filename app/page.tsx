@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Activity, Bell, Check, CirclePause, CirclePlay, CreditCard, Disc3, ExternalLink, Music2, Plus, Search, ShieldCheck, ShoppingBag, Ticket, Trash2, Zap } from "lucide-react";
+import { Activity, Bell, Check, CirclePause, CirclePlay, CreditCard, Disc3, ExternalLink, Music2, Plus, Pencil, Search, ShieldCheck, ShoppingBag, Ticket, Trash2, Zap } from "lucide-react";
 import { DEMO_ACTIVITY, DEMO_PROFILES } from "@/lib/demo-data";
 import type { ProfileKind, SearchProfile } from "@/lib/types";
 
@@ -12,6 +12,7 @@ export default function Home() {
   const [profiles, setProfiles] = useState<SearchProfile[]>([]);
   const [ready, setReady] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [kind, setKind] = useState<ProfileKind>("drop");
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
@@ -46,18 +47,43 @@ export default function Home() {
   const activeCount = profiles.filter((profile) => profile.status === "active").length;
   const instantCount = profiles.filter((profile) => profile.instantBuy).length;
 
-  function addProfile(event: FormEvent<HTMLFormElement>) {
+  function openCreateForm() {
+    setEditingId(null);
+    setKind("drop"); setName(""); setUrl(""); setKeywords("");
+    setQuantity("2"); setMaxPrice("65"); setInstantBuy(false); setPayment("paypal");
+    setShowForm(true);
+  }
+
+  function openEditForm(profile: SearchProfile) {
+    setEditingId(profile.id);
+    setKind(profile.kind); setName(profile.name); setUrl(profile.url);
+    setKeywords(profile.keywords.join(", ")); setQuantity(String(profile.quantity));
+    setMaxPrice(profile.maxPrice === null ? "" : String(profile.maxPrice));
+    setInstantBuy(profile.instantBuy); setPayment(profile.paymentPreference);
+    setShowForm(true);
+  }
+
+  function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim() || (kind === "ticket" && !url.trim())) return;
-    const profile: SearchProfile = {
-      id: crypto.randomUUID(), kind, name: name.trim(), url: url.trim(),
+    const values = {
+      kind, name: name.trim(), url: url.trim(),
       keywords: keywords.split(",").map((word) => word.trim()).filter(Boolean),
       quantity: Math.max(1, Number(quantity) || 1),
       maxPrice: maxPrice.trim() ? Number(maxPrice) : null,
-      instantBuy, paymentPreference: payment, status: "active", createdAt: new Date().toISOString()
+      instantBuy, paymentPreference: payment
     };
-    setProfiles((current) => [profile, ...current]);
-    setName(""); setUrl(""); setKeywords(""); setQuantity("2"); setMaxPrice("65"); setInstantBuy(false);
+    if (editingId) {
+      setProfiles((current) => current.map((profile) =>
+        profile.id === editingId ? { ...profile, ...values } : profile
+      ));
+    } else {
+      const profile: SearchProfile = {
+        id: crypto.randomUUID(), ...values, status: "active", createdAt: new Date().toISOString()
+      };
+      setProfiles((current) => [profile, ...current]);
+    }
+    setEditingId(null);
     setShowForm(false);
   }
 
@@ -92,7 +118,7 @@ export default function Home() {
         <div className="content">
           <section className="intro">
             <div><div className="overline">DEIN PERSÖNLICHER BOOKING-AGENT</div><h1>Alles im Blick. <span>Keinen Drop verpassen.</span></h1><p>Tickets und Produkte finden, bevor sie weg sind.</p></div>
-            <button className="primary" onClick={() => setShowForm(true)}><Plus size={16} /> Suchprofil erstellen</button>
+            <button className="primary" onClick={openCreateForm}><Plus size={16} /> Suchprofil erstellen</button>
           </section>
 
           <section className="stats">
@@ -102,7 +128,7 @@ export default function Home() {
             <article><div>Sofortkauf-Regeln <Zap /></div><strong>{instantCount}</strong><small>Checkout-Modus aktiviert</small></article>
           </section>
 
-          <div className="section-title" id="profiles"><div><div className="overline">MONITORING</div><h2>Deine Suchprofile</h2></div><button className="text-button" onClick={() => setShowForm(true)}>Profil hinzufügen <Plus size={15} /></button></div>
+          <div className="section-title" id="profiles"><div><div className="overline">MONITORING</div><h2>Deine Suchprofile</h2></div><button className="text-button" onClick={openCreateForm}>Profil hinzufügen <Plus size={15} /></button></div>
           <section className="panel">
             <div className="toolbar"><div className="filters">
               <button className={filter === "all" ? "filter active" : "filter"} onClick={() => setFilter("all")}>Alle <b>{profiles.length}</b></button>
@@ -120,7 +146,7 @@ export default function Home() {
                 </div>
                 <div className="profile-controls"><small><CreditCard size={13} /> {profile.paymentPreference === "paypal" ? "PayPal bevorzugt" : "Klarna bevorzugt"}</small>
                   <button className={profile.instantBuy ? "toggle on" : "toggle"} onClick={() => toggleInstantBuy(profile.id)} aria-pressed={profile.instantBuy}><i /> Sofort kaufen</button></div>
-                <div className="row-actions"><button className="icon-button" onClick={() => toggleStatus(profile.id)} aria-label={profile.status === "active" ? "Pausieren" : "Fortsetzen"}>{profile.status === "active" ? <CirclePause size={16} /> : <CirclePlay size={16} />}</button><button className="icon-button" onClick={() => setProfiles(current => current.filter(p => p.id !== profile.id))} aria-label="Löschen"><Trash2 size={15} /></button></div>
+                <div className="row-actions"><button className="icon-button" onClick={() => openEditForm(profile)} aria-label="Bearbeiten"><Pencil size={15} /></button><button className="icon-button" onClick={() => toggleStatus(profile.id)} aria-label={profile.status === "active" ? "Pausieren" : "Fortsetzen"}>{profile.status === "active" ? <CirclePause size={16} /> : <CirclePlay size={16} />}</button><button className="icon-button" onClick={() => setProfiles(current => current.filter(p => p.id !== profile.id))} aria-label="Löschen"><Trash2 size={15} /></button></div>
               </article>)}
               {visibleProfiles.length === 0 && <div className="empty"><Search /><strong>Keine Suchprofile gefunden</strong><span>Ändere den Filter oder erstelle ein neues Profil.</span></div>}
             </div>
@@ -139,8 +165,8 @@ export default function Home() {
 
       {showForm && <div className="backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowForm(false); }}>
         <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-          <div className="modal-head"><div><div className="overline">NEUES MONITORING</div><h2 id="modal-title">Suchprofil erstellen</h2></div><button className="icon-button" onClick={() => setShowForm(false)} aria-label="Schließen">×</button></div>
-          <form onSubmit={addProfile}>
+          <div className="modal-head"><div><div className="overline">NEUES MONITORING</div><h2 id="modal-title">{editingId ? "Suchprofil bearbeiten" : "Suchprofil erstellen"}</h2></div><button className="icon-button" onClick={() => setShowForm(false); setEditingId(null); }} aria-label="Schließen">×</button></div>
+          <form onSubmit={saveProfile}>
             <div className="kind-tabs"><button type="button" className={kind === "drop" ? "chosen" : ""} onClick={() => setKind("drop")}><ShoppingBag size={15} /> Produkt-Drop</button><button type="button" className={kind === "ticket" ? "chosen" : ""} onClick={() => setKind("ticket")}><Ticket size={15} /> Konzertticket</button></div>
             <label>Name des Suchprofils<input required value={name} onChange={e => setName(e.target.value)} placeholder={kind === "drop" ? "z. B. Pokémon Booster-Display" : "z. B. Lieblingsband – Tour 2027"} /></label>
             <label>{kind === "ticket" ? "Event-URL" : "Optionale Start-URL"}<input type="url" required={kind === "ticket"} value={url} onChange={e => setUrl(e.target.value)} placeholder={kind === "ticket" ? "https://tickets.example.com/event" : "https://www.pokemoncenter.com/"} /></label>
@@ -148,7 +174,7 @@ export default function Home() {
             <div className="two-fields"><label>Menge<input type="number" min="1" max="20" value={quantity} onChange={e => setQuantity(e.target.value)} /></label><label>Maximalpreis / Stück (€)<input type="number" min="0" step="0.01" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="Kein Limit" /></label></div>
             <label>Zahlungspräferenz<select value={payment} onChange={e => setPayment(e.target.value as "paypal" | "klarna")}><option value="paypal">PayPal bevorzugt</option><option value="klarna">Klarna bevorzugt</option></select></label>
             <label className="check-row"><input type="checkbox" checked={instantBuy} onChange={e => setInstantBuy(e.target.checked)} /><span><strong>Sofort kaufen</strong><small>Checkout automatisch vorbereiten, sofern vom Shop zugelassen. Zahlungsfreigaben bleiben erforderlich.</small></span></label>
-            <div className="modal-actions"><button type="button" className="secondary" onClick={() => setShowForm(false)}>Abbrechen</button><button type="submit" className="primary"><Plus size={15} /> Profil speichern</button></div>
+            <div className="modal-actions"><button type="button" className="secondary" onClick={() => { setShowForm(false); setEditingId(null); }}>Abbrechen</button><button type="submit" className="primary">{editingId ? <Check size={15} /> : <Plus size={15} />} {editingId ? "Änderungen speichern" : "Profil speichern"}</button></div>
           </form>
         </section>
       </div>}
