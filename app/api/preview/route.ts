@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import chromium from "@sparticuz/chromium";
+import { chromium as playwright } from "playwright-core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 type ProductInfo = {
-  title: string | null;
-  description: string | null;
-  image: string | null;
-  price: string | null;
-  currency: string | null;
-  availability: string | null;
+  title: string | null; description: string | null; image: string | null;
+  price: string | null; currency: string | null; availability: string | null;
   canonicalUrl: string;
 };
 
@@ -25,7 +24,7 @@ function isPublicIp(ip: string) {
   const value = ip.toLowerCase();
   return value !== "::" && value !== "::1" && !value.startsWith("fc") &&
     !value.startsWith("fd") && !value.startsWith("fe8") && !value.startsWith("fe9") &&
-    !value.startsWith("fea") && !value.startsWith("feb") && !value.startsWith("::ffff:") ;
+    !value.startsWith("fea") && !value.startsWith("feb") && !value.startsWith("::ffff:");
 }
 
 async function validatePublicUrl(raw: string) {
@@ -44,103 +43,104 @@ async function validatePublicUrl(raw: string) {
   return url;
 }
 
-function decode(value: string) {
-  return value.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
-}
-function meta(html: string, key: string) {
-  const tags = html.match(/<meta\\b[^>]*>/gi) ?? [];
-  for (const tag of tags) {
-    const attrs: Record<string, string> = {};
-    const attrPattern = /([a-zA-Z:-]+)\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))/g;
-    let match: RegExpExecArray | null;
-    while ((match = attrPattern.exec(tag))) attrs[match[1].toLowerCase()] = match[2] ?? match[3] ?? match[4] ?? "";
-    if ((attrs.property ?? attrs.name ?? "").toLowerCase() === key.toLowerCase() && attrs.content) return decode(attrs.content.trim());
-  }
-  return null;
-}
-function textValue(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-function findProduct(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object") return null;
-  const obj = value as Record<string, unknown>;
-  const type = obj["@type"];
-  if ((type === "Product" || (Array.isArray(type) && type.includes("Product"))) && (obj.name || obj.offers)) return obj;
-  if (Array.isArray(obj)) { for (const item of obj) { const found = findProduct(item); if (found) return found; } }
-  if (Array.isArray(obj["@graph"])) return findProduct(obj["@graph"]);
-  return null;
-}
-function productFromJsonLd(html: string) {
-  const scripts = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) ?? [];
-  for (const script of scripts) {
-    const body = script.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "").trim();
-    try { const product = findProduct(JSON.parse(body)); if (product) return product; } catch { /* ignore malformed structured data */ }
-  }
-  return null;
-}
-
 export async function POST(request: NextRequest) {
+  let browser: Awaited<ReturnType<typeof playwright.launch>> | undefined;
   try {
     const body = await request.json().catch(() => null) as { url?: string } | null;
     if (!body || typeof body.url !== "string" || body.url.length > 2048) {
       return NextResponse.json({ error: "Bitte eine gültige URL angeben." }, { status: 400 });
     }
+
     let url: URL;
     try { url = await validatePublicUrl(body.url); }
     catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Ungültige URL." }, { status: 400 }); }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "GET", redirect: "manual", signal: controller.signal,
-        headers: { "User-Agent": "DropPilotPreview/1.0 (+URL metadata preview)", "Accept": "text/html,application/xhtml+xml" },
-        cache: "no-store",
-      });
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
-        const location = response.headers.get("location");
-        if (!location) throw new Error("Die Website hat eine ungültige Weiterleitung gesendet.");
-        const redirected = await validatePublicUrl(new URL(location, url).toString());
-        response = await fetch(redirected, {
-          method: "GET", redirect: "manual", signal: controller.signal,
-          headers: { "User-Agent": "DropPilotPreview/1.0 (+URL metadata preview)", "Accept": "text/html,application/xhtml+xml" },
-          cache: "no-store",
-        });
-        url = redirected;
-      }
-    } finally { clearTimeout(timeout); }
+    browser = await playwright.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+    const context = await browser.newContext({
+      userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari/537.36",
+      viewport: { width: 1365, height: 900 },
+      locale: "de-DE",
+    });
 
-    if (!response.ok) return NextResponse.json({ error: `Die Website antwortet mit HTTP ${response.status}.` }, { status: 422 });
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
-      return NextResponse.json({ error: "Die URL liefert keine HTML-Seite." }, { status: 422 });
+    // Block private-network subrequests as well as private initial URLs.
+    await context.route("**/*", async (route) => {
+      try {
+        await validatePublicUrl(route.request().url());
+        await route.continue();
+      } catch {
+        await route.abort("blockedbyclient");
+      }
+    });
+
+    const page = await context.newPage();
+    page.setDefaultNavigationTimeout(18000);
+    page.setDefaultTimeout(8000);
+    let response;
+    try {
+      response = await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 18000 });
+      await page.waitForLoadState("networkidle", { timeout: 4500 }).catch(() => undefined);
+      await page.waitForTimeout(900);
+    } catch (error) {
+      if (!response) throw error;
     }
-    const length = Number(response.headers.get("content-length") ?? 0);
-    if (length > 1_000_000) return NextResponse.json({ error: "Die Seite ist für eine Vorschau zu groß." }, { status: 413 });
-    const html = (await response.text()).slice(0, 1_000_000);
-    const product = productFromJsonLd(html);
-    const offers = product?.offers && typeof product.offers === "object"
-      ? (Array.isArray(product.offers) ? product.offers[0] : product.offers) as Record<string, unknown>
-      : null;
-    const imageValue = product?.image ?? meta(html, "og:image");
-    const image = Array.isArray(imageValue) ? textValue(imageValue[0]) : textValue(imageValue);
-    const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
-    const info: ProductInfo = {
-      title: textValue(product?.name) ?? meta(html, "og:title") ?? (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? null),
-      description: textValue(product?.description) ?? meta(html, "og:description") ?? meta(html, "description"),
-      image: image ? new URL(image, url).toString() : null,
-      price: textValue(offers?.price) ?? meta(html, "product:price:amount"),
-      currency: textValue(offers?.priceCurrency) ?? meta(html, "product:price:currency"),
-      availability: textValue(offers?.availability) ?? null,
-      canonicalUrl: canonicalMatch?.[1] ? new URL(decode(canonicalMatch[1]), url).toString() : url.toString(),
-    };
+
+    const status = response?.status() ?? null;
+    if (status === 403 || status === 429) {
+      return NextResponse.json({ error: `Der Shop beschränkt den automatisierten Seitenabruf (HTTP ${status}).`, restricted: true, status }, { status: 422 });
+    }
+    if (status && status >= 400) {
+      return NextResponse.json({ error: `Die Website antwortet mit HTTP ${status}.`, status }, { status: 422 });
+    }
+
+    const info = await page.evaluate((): ProductInfo => {
+      const meta = (selector: string) => document.querySelector(selector)?.getAttribute("content")?.trim() || null;
+      const text = (value: unknown): string | null => typeof value === "string" && value.trim() ? value.trim() : null;
+      const flatten = (value: unknown): Record<string, unknown>[] => {
+        if (Array.isArray(value)) return value.flatMap(flatten);
+        if (!value || typeof value !== "object") return [];
+        const obj = value as Record<string, unknown>;
+        return [obj, ...(Array.isArray(obj["@graph"]) ? obj["@graph"].flatMap(flatten) : [])];
+      };
+      const scripts = [...document.querySelectorAll('script[type="application/ld+json"]')];
+      const product = scripts.flatMap((node) => {
+        try { return flatten(JSON.parse(node.textContent || "null")); } catch { return []; }
+      }).find((item) => {
+        const type = item["@type"];
+        return type === "Product" || (Array.isArray(type) && type.includes("Product"));
+      });
+      const offers = product?.offers;
+      const offer = Array.isArray(offers) ? offers[0] as Record<string, unknown> | undefined : offers as Record<string, unknown> | undefined;
+      const rawImage = Array.isArray(product?.image) ? product.image[0] : product?.image;
+      const image = text(rawImage) || meta('meta[property="og:image"]');
+      const canonical = document.querySelector('link[rel="canonical"]')?.getAttribute("href");
+      return {
+        title: text(product?.name) || meta('meta[property="og:title"]') || document.title || null,
+        description: text(product?.description) || meta('meta[property="og:description"]') || meta('meta[name="description"]'),
+        image: image ? new URL(image, location.href).toString() : null,
+        price: text(offer?.price) || meta('meta[property="product:price:amount"]'),
+        currency: text(offer?.priceCurrency) || meta('meta[property="product:price:currency"]'),
+        availability: text(offer?.availability),
+        canonicalUrl: canonical ? new URL(canonical, location.href).toString() : location.href,
+      };
+    });
+
     if (!info.title && !info.description && !info.price) {
-      return NextResponse.json({ error: "Die Seite stellt keine auslesbaren Produktinformationen bereit. Möglicherweise wird JavaScript benötigt." }, { status: 422 });
+      return NextResponse.json({ error: "Der Browser hat die Seite geladen, aber keine Produktdaten gefunden. Eventuell benötigt der Shop eine Anmeldung oder blockiert automatisierte Zugriffe." }, { status: 422 });
     }
-    return NextResponse.json({ info });
+    return NextResponse.json({ info, status, source: "hosted-browser" });
   } catch (error) {
-    console.error("URL preview failed:", error);
-    return NextResponse.json({ error: "Die Seite konnte nicht analysiert werden. Bitte URL und Erreichbarkeit prüfen." }, { status: 500 });
+    console.error("Hosted browser preview failed:", error);
+    const message = error instanceof Error ? error.message : "";
+    return NextResponse.json({
+      error: message.includes("Timed out") || message.includes("timeout")
+        ? "Der Shop hat innerhalb des Zeitlimits nicht geantwortet."
+        : "Die Website konnte im Browser nicht analysiert werden. Bitte später erneut versuchen.",
+    }, { status: 500 });
+  } finally {
+    await browser?.close().catch(() => undefined);
   }
 }
