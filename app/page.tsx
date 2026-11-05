@@ -8,6 +8,23 @@ import type { ProfileKind, SearchProfile } from "@/lib/types";
 
 const STORAGE_KEY = "droppilot.profiles.v1";
 
+type DetectedProvider = "eventim" | "ticketmaster" | "generic";
+function detectProvider(rawUrl: string): DetectedProvider | null {
+  if (!rawUrl.trim()) return null;
+  try {
+    const host = new URL(rawUrl).hostname.toLowerCase().replace(/^www\./, "");
+    if (host.includes("eventim")) return "eventim";
+    if (host.includes("ticketmaster")) return "ticketmaster";
+    return "generic";
+  } catch { return null; }
+}
+function providerLabel(provider: DetectedProvider | null) {
+  if (provider === "eventim") return "Eventim erkannt";
+  if (provider === "ticketmaster") return "Ticketmaster erkannt";
+  if (provider === "generic") return "Allgemeine Shop-/Eventseite";
+  return "Anbieter wird anhand der URL erkannt";
+}
+
 export default function Home() {
   const [profiles, setProfiles] = useState<SearchProfile[]>([]);
   const [ready, setReady] = useState(false);
@@ -91,9 +108,9 @@ export default function Home() {
 
   function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!name.trim() || (kind === "ticket" && !url.trim())) return;
+    if (!name.trim() || !url.trim() || !detectProvider(url)) return;
     const values = {
-      kind, name: name.trim(), url: url.trim(),
+      kind, name: name.trim(), url: url.trim(), provider: detectProvider(url) ?? "generic",
       keywords: keywords.split(",").map((word) => word.trim()).filter(Boolean),
       quantity: Math.max(1, Number(quantity) || 1),
       maxPrice: maxPrice.trim() ? Number(maxPrice) : null,
@@ -143,7 +160,7 @@ export default function Home() {
         <header className="topbar"><span>Workspace <b>/</b> Übersicht</span><div className="top-right"><em><i /> DEMO UMGEBUNG</em><button className="icon-button" aria-label="Benachrichtigungen"><Bell size={17} /></button></div></header>
         <div className="content">
           <section className="intro">
-            <div><div className="overline">DEIN PERSÖNLICHER BOOKING-AGENT</div><h1>Alles im Blick. <span>Keinen Drop verpassen.</span></h1><p>Tickets und Produkte finden, bevor sie weg sind.</p></div>
+            <div><div className="overline">DEIN PERSÖNLICHER BOOKING-AGENT</div><h1>Alles im Blick. <span>Keinen Drop verpassen.</span></h1><p>Ticket- und Shopseiten per URL hinzufügen. DropPilot erkennt den Anbieter automatisch.</p></div>
             <button className="primary" onClick={openCreateForm}><Plus size={16} /> Suchprofil erstellen</button>
           </section>
 
@@ -166,7 +183,7 @@ export default function Home() {
               {visibleProfiles.map((profile) => <article className="profile" key={profile.id}>
                 <div className={profile.kind === "ticket" ? "profile-icon ticket" : "profile-icon drop"}>{profile.kind === "ticket" ? <Music2 size={19} /> : <ShoppingBag size={19} />}</div>
                 <div className="profile-info"><div className="profile-name"><strong>{profile.name}</strong><span className={profile.status === "active" ? "status live" : "status paused"}>{profile.status === "active" ? "Aktiv" : "Pausiert"}</span></div>
-                  <div className="meta">{profile.kind === "ticket" ? "Konzert / Event" : "Produkt-Drop"} · {profile.quantity} {profile.kind === "ticket" ? "Tickets" : "Stück"}{profile.maxPrice !== null ? " · Limit " + profile.maxPrice.toLocaleString("de-DE", { style: "currency", currency: "EUR" }) : ""}</div>
+                  <div className="meta">{profile.kind === "ticket" ? "Ticket / Event" : "Shop-Produkt"} · {providerLabel(detectProvider(profile.url))} · {profile.quantity} {profile.kind === "ticket" ? "Tickets" : "Stück"}{profile.maxPrice !== null ? " · Limit " + profile.maxPrice.toLocaleString("de-DE", { style: "currency", currency: "EUR" }) : ""}</div>
                   <div className="keywords">{profile.keywords.map(word => <span key={word}>{word}</span>)}</div>
                   {profile.url && <a className="source" href={profile.url} target="_blank" rel="noreferrer"><ExternalLink size={12} /> Quelle öffnen</a>}
                 </div>
@@ -176,7 +193,7 @@ export default function Home() {
               </article>)}
               {visibleProfiles.length === 0 && <div className="empty"><Search /><strong>Keine Suchprofile gefunden</strong><span>Ändere den Filter oder erstelle ein neues Profil.</span></div>}
             </div>
-            <div className="panel-foot"><ShieldCheck size={15} /> Profile werden in deiner Turso-Datenbank gespeichert. Es werden noch keine Shops abgefragt und keine Bestellungen ausgelöst.</div>
+            <div className="panel-foot"><ShieldCheck size={15} /> Profile werden in deiner Turso-Datenbank gespeichert. Anbietererkennung ist vorbereitet. Automatische Seitenabfragen und Bestellungen sind noch nicht aktiviert.</div>
           </section>
 
           <div className="bottom-grid">
@@ -191,11 +208,12 @@ export default function Home() {
 
       {showForm && <div className="backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { setShowForm(false); setEditingId(null); } }}>
         <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-          <div className="modal-head"><div><div className="overline">NEUES MONITORING</div><h2 id="modal-title">{editingId ? "Suchprofil bearbeiten" : "Suchprofil erstellen"}</h2></div><button className="icon-button" onClick={() => { setShowForm(false); setEditingId(null); }} aria-label="Schließen">×</button></div>
+          <div className="modal-head"><div><div className="overline">URL-BASIERTES MONITORING</div><h2 id="modal-title">{editingId ? "Suchprofil bearbeiten" : "Suchprofil erstellen"}</h2></div><button className="icon-button" onClick={() => { setShowForm(false); setEditingId(null); }} aria-label="Schließen">×</button></div>
           <form onSubmit={saveProfile}>
             <div className="kind-tabs"><button type="button" className={kind === "drop" ? "chosen" : ""} onClick={() => setKind("drop")}><ShoppingBag size={15} /> Produkt-Drop</button><button type="button" className={kind === "ticket" ? "chosen" : ""} onClick={() => setKind("ticket")}><Ticket size={15} /> Konzertticket</button></div>
             <label>Name des Suchprofils<input required value={name} onChange={e => setName(e.target.value)} placeholder={kind === "drop" ? "z. B. Pokémon Booster-Display" : "z. B. Lieblingsband – Tour 2027"} /></label>
-            <label>{kind === "ticket" ? "Event-URL" : "Optionale Start-URL"}<input type="url" required={kind === "ticket"} value={url} onChange={e => setUrl(e.target.value)} placeholder={kind === "ticket" ? "https://tickets.example.com/event" : "https://www.pokemoncenter.com/"} /></label>
+            <label>Website-URL<input type="url" required value={url} onChange={e => setUrl(e.target.value)} placeholder={kind === "ticket" ? "https://www.eventim.de/ oder Ticket-Link" : "https://www.pokemoncenter.com/"} />
+            <small className="url-detection">{providerLabel(detectProvider(url))}</small></label>
             <label>Suchbegriffe <small>Kommagetrennt</small><input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Pokémon, Booster, Display, neue Edition" /></label>
             <div className="two-fields"><label>Menge<input type="number" min="1" max="20" value={quantity} onChange={e => setQuantity(e.target.value)} /></label><label>Maximalpreis / Stück (€)<input type="number" min="0" step="0.01" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="Kein Limit" /></label></div>
             <label>Zahlungspräferenz<select value={payment} onChange={e => setPayment(e.target.value as "paypal" | "klarna")}><option value="paypal">PayPal bevorzugt</option><option value="klarna">Klarna bevorzugt</option></select></label>
