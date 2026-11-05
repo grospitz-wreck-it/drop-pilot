@@ -163,9 +163,9 @@ export default function Home() {
         </div>
       </section>
 
-      {showForm && <div className="backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowForm(false); }}>
+      {showForm && <div className="backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { setShowForm(false); setEditingId(null); } }}>
         <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-          <div className="modal-head"><div><div className="overline">NEUES MONITORING</div><h2 id="modal-title">{editingId ? "Suchprofil bearbeiten" : "Suchprofil erstellen"}</h2></div><button className="icon-button" onClick={() => setShowForm(false); setEditingId(null); }} aria-label="Schließen">×</button></div>
+          <div className="modal-head"><div><div className="overline">NEUES MONITORING</div><h2 id="modal-title">{editingId ? "Suchprofil bearbeiten" : "Suchprofil erstellen"}</h2></div><button className="icon-button" onClick={() => { setShowForm(false); setEditingId(null); }} aria-label="Schließen">×</button></div>
           <form onSubmit={saveProfile}>
             <div className="kind-tabs"><button type="button" className={kind === "drop" ? "chosen" : ""} onClick={() => setKind("drop")}><ShoppingBag size={15} /> Produkt-Drop</button><button type="button" className={kind === "ticket" ? "chosen" : ""} onClick={() => setKind("ticket")}><Ticket size={15} /> Konzertticket</button></div>
             <label>Name des Suchprofils<input required value={name} onChange={e => setName(e.target.value)} placeholder={kind === "drop" ? "z. B. Pokémon Booster-Display" : "z. B. Lieblingsband – Tour 2027"} /></label>
