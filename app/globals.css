@@ -17,3 +17,13 @@
 .login-card form .primary:disabled{opacity:.6;cursor:wait}
 .login-error{margin-top:10px;color:#ff9c9c;font-size:11px}
 .login-foot{display:block;margin-top:22px;color:#788499;font-size:10px;line-height:1.5}
+
+.analyze-button{height:34px;border:1px solid #51477d;border-radius:7px;background:#25213b;color:#d6d0ff;font-size:10px;font-weight:700;padding:0 11px;justify-self:start}
+.analyze-button:disabled{opacity:.5;cursor:wait}
+.url-detection{color:#a99fff!important}
+.preview-error{color:#ff9c9c;font-size:10px;font-weight:500}
+.preview-card{display:flex;gap:11px;align-items:flex-start;padding:10px;border:1px solid #343b4d;background:#10151f;border-radius:8px;margin-top:3px}
+.preview-card img{width:64px;height:64px;object-fit:contain;border-radius:6px;background:#fff}
+.preview-card strong{display:block;font-size:11px;color:#eef1f7}
+.preview-card p{font-size:9px;line-height:1.45;color:#9da7b9;margin:5px 0}
+.preview-card span,.preview-card small{display:inline-block;font-size:10px;color:#7be0b7;margin:3px 7px 0 0}
