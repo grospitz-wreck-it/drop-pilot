@@ -25,17 +25,44 @@ export default function Home() {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      setProfiles(saved ? JSON.parse(saved) as SearchProfile[] : DEMO_PROFILES);
-    } catch {
-      setProfiles(DEMO_PROFILES);
+    let cancelled = false;
+    async function loadProfiles() {
+      try {
+        const response = await fetch("/api/profiles", { cache: "no-store" });
+        if (!response.ok) throw new Error("Datenbank konnte nicht geladen werden.");
+        const data = await response.json() as { profiles: SearchProfile[] };
+        if (cancelled) return;
+
+        if (data.profiles.length > 0) {
+          setProfiles(data.profiles);
+        } else {
+          let initialProfiles = DEMO_PROFILES;
+          try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) initialProfiles = JSON.parse(saved) as SearchProfile[];
+          } catch {
+            // Use demo profiles if old browser data is unreadable.
+          }
+          setProfiles(initialProfiles);
+        }
+        setReady(true);
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) setReady(true);
+      }
     }
-    setReady(true);
+    loadProfiles();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (ready) localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+    if (!ready) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+    fetch("/api/profiles", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profiles }),
+    }).catch((error) => console.error("Profil-Synchronisierung fehlgeschlagen:", error));
   }, [profiles, ready]);
 
   const visibleProfiles = useMemo(() => profiles.filter((profile) => {
@@ -108,7 +135,7 @@ export default function Home() {
           <a className="nav-link" href="#activity"><CreditCard size={17} /> Aktivitäten</a>
         </nav>
         <div className="side-bottom">
-          <div className="server-status"><i /> <div><strong>Lokaler Modus</strong><small>Demo · kein Worker verbunden</small></div></div>
+          <div className="server-status"><i /> <div><strong>{ready ? "Turso verbunden" : "Verbinde …"}</strong><small>Persönliche Datenbank · kein Worker</small></div></div>
           <div className="account"><span>G</span><div><strong>Mein DropPilot</strong><small>Persönlicher Agent</small></div></div>
         </div>
       </aside>
@@ -122,7 +149,7 @@ export default function Home() {
           </section>
 
           <section className="stats">
-            <article><div>Aktive Suchprofile <Search /></div><strong>{ready ? activeCount : "–"}</strong><small>lokal gespeichert</small></article>
+            <article><div>Aktive Suchprofile <Search /></div><strong>{ready ? activeCount : "–"}</strong><small>in Turso gespeichert</small></article>
             <article><div>Ticket-Monitor <Ticket /></div><strong>{profiles.filter(p => p.kind === "ticket").length}</strong><small>Event-URLs hinterlegt</small></article>
             <article><div>Drop-Monitor <Disc3 /></div><strong>{profiles.filter(p => p.kind === "drop").length}</strong><small>Produkt-Suchprofile</small></article>
             <article><div>Sofortkauf-Regeln <Zap /></div><strong>{instantCount}</strong><small>Checkout-Modus aktiviert</small></article>
@@ -150,7 +177,7 @@ export default function Home() {
               </article>)}
               {visibleProfiles.length === 0 && <div className="empty"><Search /><strong>Keine Suchprofile gefunden</strong><span>Ändere den Filter oder erstelle ein neues Profil.</span></div>}
             </div>
-            <div className="panel-foot"><ShieldCheck size={15} /> V1 speichert Profile lokal. Es werden noch keine Shops abgefragt und keine Bestellungen ausgelöst.</div>
+            <div className="panel-foot"><ShieldCheck size={15} /> Profile werden in deiner Turso-Datenbank gespeichert. Es werden noch keine Shops abgefragt und keine Bestellungen ausgelöst.</div>
           </section>
 
           <div className="bottom-grid">
