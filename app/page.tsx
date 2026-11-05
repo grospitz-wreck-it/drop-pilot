@@ -40,6 +40,9 @@ export default function Home() {
   const [payment, setPayment] = useState<"paypal" | "klarna">("paypal");
   const [filter, setFilter] = useState<"all" | ProfileKind>("all");
   const [query, setQuery] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [preview, setPreview] = useState<{title:string|null;description:string|null;image:string|null;price:string|null;currency:string|null;availability:string|null;canonicalUrl:string}|null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +107,25 @@ export default function Home() {
     setMaxPrice(profile.maxPrice === null ? "" : String(profile.maxPrice));
     setInstantBuy(profile.instantBuy); setPayment(profile.paymentPreference);
     setShowForm(true);
+  }
+
+  async function analyzeUrl() {
+    if (!url.trim() || !detectProvider(url)) return;
+    setPreviewLoading(true); setPreviewError(""); setPreview(null);
+    try {
+      const response = await fetch("/api/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const data = await response.json() as { info?: {title:string|null;description:string|null;image:string|null;price:string|null;currency:string|null;availability:string|null;canonicalUrl:string}; error?: string };
+      if (!response.ok || !data.info) throw new Error(data.error || "Die Seite konnte nicht analysiert werden.");
+      setPreview(data.info);
+      if (data.info.title && !name.trim()) setName(data.info.title);
+      if (data.info.canonicalUrl) setUrl(data.info.canonicalUrl);
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Analyse fehlgeschlagen.");
+    } finally { setPreviewLoading(false); }
   }
 
   function saveProfile(event: FormEvent<HTMLFormElement>) {
@@ -213,7 +235,17 @@ export default function Home() {
             <div className="kind-tabs"><button type="button" className={kind === "drop" ? "chosen" : ""} onClick={() => setKind("drop")}><ShoppingBag size={15} /> Produkt-Drop</button><button type="button" className={kind === "ticket" ? "chosen" : ""} onClick={() => setKind("ticket")}><Ticket size={15} /> Konzertticket</button></div>
             <label>Name des Suchprofils<input required value={name} onChange={e => setName(e.target.value)} placeholder={kind === "drop" ? "z. B. Pokémon Booster-Display" : "z. B. Lieblingsband – Tour 2027"} /></label>
             <label>Website-URL<input type="url" required value={url} onChange={e => setUrl(e.target.value)} placeholder={kind === "ticket" ? "https://www.eventim.de/ oder Ticket-Link" : "https://www.pokemoncenter.com/"} />
-            <small className="url-detection">{providerLabel(detectProvider(url))}</small></label>
+            <small className="url-detection">{providerLabel(detectProvider(url))}</small>
+            <button type="button" className="analyze-button" onClick={analyzeUrl} disabled={previewLoading || !detectProvider(url)}>{previewLoading ? "Analysiere Website …" : "Website analysieren"}</button>
+            {previewError && <span className="preview-error">{previewError}</span>}
+            {preview && <div className="preview-card">
+              {preview.image && <img src={preview.image} alt="" />}
+              <div><strong>{preview.title || "Produktseite erkannt"}</strong>
+              {preview.description && <p>{preview.description}</p>}
+              {preview.price && <span>{preview.price} {preview.currency || ""}</span>}
+              {preview.availability && <small>{preview.availability.split("/").pop()}</small>}</div>
+            </div>}
+            </label>
             <label>Suchbegriffe <small>Kommagetrennt</small><input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Pokémon, Booster, Display, neue Edition" /></label>
             <div className="two-fields"><label>Menge<input type="number" min="1" max="20" value={quantity} onChange={e => setQuantity(e.target.value)} /></label><label>Maximalpreis / Stück (€)<input type="number" min="0" step="0.01" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="Kein Limit" /></label></div>
             <label>Zahlungspräferenz<select value={payment} onChange={e => setPayment(e.target.value as "paypal" | "klarna")}><option value="paypal">PayPal bevorzugt</option><option value="klarna">Klarna bevorzugt</option></select></label>
