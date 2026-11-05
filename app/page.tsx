@@ -118,26 +118,9 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
       });
-      let data = await response.json() as { info?: {title:string|null;description:string|null;image:string|null;price:string|null;currency:string|null;availability:string|null;canonicalUrl:string}; error?: string };
+      const data = await response.json() as { info?: {title:string|null;description:string|null;image:string|null;price:string|null;currency:string|null;availability:string|null;canonicalUrl:string}; error?: string };
       if (!response.ok || !data.info) {
-        // Use a locally running, visible Chromium browser as a second normal access path.
-        try {
-          const browserResponse = await fetch("http://127.0.0.1:4317/inspect", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: url.trim() }),
-          });
-          const browserData = await browserResponse.json() as {
-            info?: typeof data.info; error?: string; status?: number | null;
-            restricted?: boolean; message?: string; finalUrl?: string;
-          };
-          if (!browserResponse.ok || !browserData.info) throw new Error(browserData.error || "Lokaler Browser nicht verfügbar.");
-          if (browserData.restricted) throw new Error(browserData.message || `Der Shop beschränkt den Browserzugriff (HTTP ${browserData.status}).`);
-          data = { info: { ...browserData.info, canonicalUrl: browserData.info.canonicalUrl || browserData.finalUrl || url.trim() } };
-        } catch (browserError) {
-          const localMessage = browserError instanceof Error ? browserError.message : "Lokaler Browser nicht erreichbar.";
-          throw new Error(`${data.error || "Serveranalyse fehlgeschlagen."} Lokaler Browser: ${localMessage} Starte den DropPilot Browser Companion, falls er noch nicht läuft.`);
-        }
+        throw new Error(data.error || "Die Website konnte nicht analysiert werden.");
       }
       if (!data.info) throw new Error("Die Seite hat keine auslesbaren Produktdaten geliefert.");
       setPreview(data.info);
