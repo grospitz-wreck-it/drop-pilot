@@ -139,6 +139,7 @@ export default function Home() {
           throw new Error(`${data.error || "Serveranalyse fehlgeschlagen."} Lokaler Browser: ${localMessage} Starte den DropPilot Browser Companion, falls er noch nicht läuft.`);
         }
       }
+      if (!data.info) throw new Error("Die Seite hat keine auslesbaren Produktdaten geliefert.");
       setPreview(data.info);
       if (data.info.title && !name.trim()) setName(data.info.title);
       if (data.info.canonicalUrl) setUrl(data.info.canonicalUrl);
