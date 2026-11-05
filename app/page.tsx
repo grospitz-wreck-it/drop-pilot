@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { Activity, Bell, Check, CirclePause, CirclePlay, CreditCard, Disc3, ExternalLink, Music2, Plus, Search, ShieldCheck, ShoppingBag, Ticket, Trash2, Zap } from "lucide-react";
 import { DEMO_ACTIVITY, DEMO_PROFILES } from "@/lib/demo-data";
 import type { ProfileKind, SearchProfile } from "@/lib/types";
@@ -45,7 +46,7 @@ export default function Home() {
   const activeCount = profiles.filter((profile) => profile.status === "active").length;
   const instantCount = profiles.filter((profile) => profile.instantBuy).length;
 
-  function addProfile(event: React.FormEvent<HTMLFormElement>) {
+  function addProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim() || (kind === "ticket" && !url.trim())) return;
     const profile: SearchProfile = {
